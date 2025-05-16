@@ -1,80 +1,73 @@
 #!/bin/bash
 
-set -e
+# Installation für Faster Whisper STT Skript mit FreePBX Asterisk
 
-# === Benutzerdefinierte Variablen ===
-EXTENSION="82"   # Hier Nebenstelle anpassen
-
+# Variablen
 VENV_DIR="/opt/whisper-venv"
-REQUIREMENTS_FILE="requirements.txt"
-VOICEMAIL_DIR="/var/spool/asterisk/voicemail/default/${EXTENSION}/INBOX/"
-TRANSCRIPT_DIR="/var/spool/asterisk/voicemail_transcripts/"
+SCRIPT_SRC="voicemail_transcriber.py"  # dein Python-Skript im aktuellen Verzeichnis
+SCRIPT_DST="/opt/voicemail_transcriber.py"
+STT_WRAPPER_SRC="stt.sh"  # dein Wrapper-Shell-Skript im aktuellen Verzeichnis
+STT_WRAPPER_DST="/usr/local/bin/stt.sh"
 
-echo "Starte Installation für Faster-Whisper Speech-to-Text für Nebenstelle $EXTENSION..."
+CONFIG_FILE="config.ini"
 
-# Prüfe root-Rechte
-if [ "$EUID" -ne 0 ]; then
-  echo "Bitte als root oder mit sudo ausführen."
-  exit 1
-fi
-
-# Prüfe Python3
-if ! command -v python3 &> /dev/null; then
-  echo "Python3 nicht gefunden. Installiere..."
-  apt update && apt install -y python3 python3-venv python3-pip
-fi
-
-# Prüfe python3-venv
-if ! python3 -m venv --help &> /dev/null; then
-  echo "Python3 venv Modul nicht gefunden. Installiere python3-venv..."
-  apt update && apt install -y python3-venv
-fi
-
-# Prüfe ffmpeg
-if ! command -v ffmpeg &> /dev/null; then
-  echo "ffmpeg nicht gefunden. Installiere ffmpeg..."
-  apt update && apt install -y ffmpeg
-fi
-
-# Virtuelle Umgebung erstellen, falls nicht vorhanden
-if [ ! -d "$VENV_DIR" ]; then
-  echo "Erstelle virtuelle Python-Umgebung in $VENV_DIR"
-  python3 -m venv "$VENV_DIR"
+# Nebenstelle aus config auslesen (optional, wenn config vorhanden)
+if [ -f "$CONFIG_FILE" ]; then
+    EXTENSION=$(grep -oP '(?<=^extension = )\d+' "$CONFIG_FILE")
 else
-  echo "Virtuelle Umgebung $VENV_DIR existiert bereits."
+    EXTENSION="140"
 fi
 
-# requirements.txt anlegen
-cat > "$REQUIREMENTS_FILE" << EOF
-faster-whisper
-ffmpeg-python
-email-validator
-EOF
+VOICEMAIL_DIR="/var/spool/asterisk/voicemail/default/${EXTENSION}/INBOX"
+TRANSCRIPT_DIR="/var/spool/asterisk/voicemail_transcripts"
+LOG_FILE="/var/log/voicemail_transcription.log"
 
-# Pakete in der virtuellen Umgebung installieren
-echo "Aktiviere virtuelle Umgebung und installiere Abhängigkeiten..."
+ASTERISK_USER="asterisk"
+ASTERISK_GROUP="asterisk"
+
+echo "Starte Installation..."
+
+# 1. Python Virtualenv anlegen
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+    echo "Virtuelle Umgebung in $VENV_DIR erstellt."
+else
+    echo "Virtuelle Umgebung existiert bereits."
+fi
+
+# 2. Abhängigkeiten installieren
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
-pip install -r "$REQUIREMENTS_FILE"
+pip install faster-whisper
 deactivate
 
-# Verzeichnisse anlegen (falls noch nicht vorhanden)
-mkdir -p "$TRANSCRIPT_DIR"
-mkdir -p "$VOICEMAIL_DIR"
+# 3. Skript kopieren
+cp "$SCRIPT_SRC" "$SCRIPT_DST"
+chmod 750 "$SCRIPT_DST"
+chown root:"$ASTERISK_GROUP" "$SCRIPT_DST"
 
-# Besitzer und Gruppe setzen (hier 'asterisk', ggf. anpassen)
-chown -R asterisk:asterisk "$TRANSCRIPT_DIR"
-chown -R asterisk:asterisk "$VOICEMAIL_DIR"
+# 4. Wrapper-Skript kopieren und ausführbar machen
+cp "$STT_WRAPPER_SRC" "$STT_WRAPPER_DST"
+chmod 750 "$STT_WRAPPER_DST"
+chown root:"$ASTERISK_GROUP" "$STT_WRAPPER_DST"
 
-# Rechte setzen (Besitzer volle Rechte, Gruppe Lesen+Ausführen)
-chmod 750 "$TRANSCRIPT_DIR"
-chmod 750 "$VOICEMAIL_DIR"
+# 5. Verzeichnisse und Logdatei anlegen und Rechte setzen
 
-echo "Besitzer und Rechte für Asterisk-Verzeichnisse gesetzt."
+mkdir -p "$VOICEMAIL_DIR" "$TRANSCRIPT_DIR"
+touch "$LOG_FILE"
 
-echo "Installation abgeschlossen!"
-echo "Virtuelle Umgebung ist unter $VENV_DIR."
-echo "Bitte das Skript mit folgendem Python-Interpreter ausführen:"
-echo "  $VENV_DIR/bin/python"
+chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$VOICEMAIL_DIR"
+chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$TRANSCRIPT_DIR"
+chown "$ASTERISK_USER":"$ASTERISK_GROUP" "$LOG_FILE"
 
-exit 0
+chmod -R 770 "$VOICEMAIL_DIR"
+chmod -R 770 "$TRANSCRIPT_DIR"
+chmod 660 "$LOG_FILE"
+
+echo "Rechte für Asterisk gesetzt."
+
+echo "Installation abgeschlossen."
+echo "Bitte in FreePBX in der Voicemail-Einstellung der Nebenstelle $EXTENSION als Benachrichtigungsbefehl folgenden Befehl angeben:"
+echo "$STT_WRAPPER_DST \$1"
+echo "Das Skript wird bei neuen Voicemails aufgerufen und transkribiert diese automatisch."
+
