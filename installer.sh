@@ -1,73 +1,85 @@
 #!/bin/bash
 
-# Installation für Faster Whisper STT Skript mit FreePBX Asterisk
-
-# Variablen
-VENV_DIR="/opt/whisper-venv"
-SCRIPT_SRC="voicemail_transcriber.py"  # dein Python-Skript im aktuellen Verzeichnis
-SCRIPT_DST="/opt/voicemail_transcriber.py"
-STT_WRAPPER_SRC="stt.sh"  # dein Wrapper-Shell-Skript im aktuellen Verzeichnis
-STT_WRAPPER_DST="/usr/local/bin/stt.sh"
-
-CONFIG_FILE="config.ini"
-
-# Nebenstelle aus config auslesen (optional, wenn config vorhanden)
-if [ -f "$CONFIG_FILE" ]; then
-    EXTENSION=$(grep -oP '(?<=^extension = )\d+' "$CONFIG_FILE")
-else
-    EXTENSION="140"
-fi
-
-VOICEMAIL_DIR="/var/spool/asterisk/voicemail/default/${EXTENSION}/INBOX"
-TRANSCRIPT_DIR="/var/spool/asterisk/voicemail_transcripts"
-LOG_FILE="/var/log/voicemail_transcription.log"
-
-ASTERISK_USER="asterisk"
-ASTERISK_GROUP="asterisk"
+set -e
+#set -x  # Für Debugging: Einzeilig auskommentieren
 
 echo "Starte Installation..."
 
-# 1. Python Virtualenv anlegen
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-    echo "Virtuelle Umgebung in $VENV_DIR erstellt."
+# Prüfe, ob Script als root läuft, sonst sudo setzen
+if [ "$(id -u)" -ne 0 ]; then
+    SUDO='sudo'
 else
-    echo "Virtuelle Umgebung existiert bereits."
+    SUDO=''
 fi
 
-# 2. Abhängigkeiten installieren
-source "$VENV_DIR/bin/activate"
-pip install --upgrade pip
-pip install faster-whisper
-deactivate
+# Prüfe und installiere python3-venv falls nötig
+if ! dpkg -s python3-venv >/dev/null 2>&1; then
+    echo "python3-venv ist nicht installiert. Installation wird durchgeführt..."
+    $SUDO apt update
+    $SUDO apt install -y python3-venv
+    echo "python3-venv wurde erfolgreich installiert."
+fi
 
-# 3. Skript kopieren
-cp "$SCRIPT_SRC" "$SCRIPT_DST"
-chmod 750 "$SCRIPT_DST"
-chown root:"$ASTERISK_GROUP" "$SCRIPT_DST"
+# Variablen anpassen:
+VENV_DIR="/usr/local/voicemail/whisper-venv"
+SCRIPT_SOURCE_DIR="$(pwd)"  # Verzeichnis, aus dem das Skript ausgeführt wird
+TRANSCRIBER_PY="voicemail_transcriber.py"
+STT_WRAPPER_SH="stt.sh"
 
-# 4. Wrapper-Skript kopieren und ausführbar machen
-cp "$STT_WRAPPER_SRC" "$STT_WRAPPER_DST"
-chmod 750 "$STT_WRAPPER_DST"
-chown root:"$ASTERISK_GROUP" "$STT_WRAPPER_DST"
+# Nebenstelle (Voicemail-Ordner)
+EXTENSION="82"
 
-# 5. Verzeichnisse und Logdatei anlegen und Rechte setzen
+# Asterisk-Benutzer (für Rechte)
+ASTERISK_USER="asterisk"
+ASTERISK_GROUP="asterisk"
 
-mkdir -p "$VOICEMAIL_DIR" "$TRANSCRIPT_DIR"
-touch "$LOG_FILE"
+# Verzeichnisse der Voicemail (anpassbar)
+VOICEMAIL_DIR="/var/spool/asterisk/voicemail/default/${EXTENSION}/INBOX"
+TRANSCRIPT_DIR="/var/spool/asterisk/voicemail_transcripts"
 
-chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$VOICEMAIL_DIR"
-chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$TRANSCRIPT_DIR"
-chown "$ASTERISK_USER":"$ASTERISK_GROUP" "$LOG_FILE"
+echo "Setze Verzeichnisse und Rechte..."
 
-chmod -R 770 "$VOICEMAIL_DIR"
-chmod -R 770 "$TRANSCRIPT_DIR"
-chmod 660 "$LOG_FILE"
+# Erstelle Verzeichnisse, wenn nicht vorhanden
+$SUDO mkdir -p "$VOICEMAIL_DIR"
+$SUDO mkdir -p "$TRANSCRIPT_DIR"
+
+# Setze Eigentümer auf Asterisk-Benutzer
+$SUDO chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$VOICEMAIL_DIR" "$TRANSCRIPT_DIR"
+
+# Erstelle virtuelle Umgebung falls nicht vorhanden
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Erstelle virtuelle Umgebung in $VENV_DIR ..."
+    $SUDO python3 -m venv "$VENV_DIR"
+    $SUDO chown -R "$ASTERISK_USER":"$ASTERISK_GROUP" "$VENV_DIR"
+else
+    echo "Virtuelle Umgebung existiert bereits in $VENV_DIR."
+fi
+
+# Aktiviere virtuelle Umgebung und installiere Abhängigkeiten
+echo "Installiere Python-Abhängigkeiten..."
+# Nutze sudo -u asterisk, damit Pakete für den Asterisk-User installiert werden, falls nötig
+$SUDO bash -c "source $VENV_DIR/bin/activate && pip install --upgrade pip && pip install -r $SCRIPT_SOURCE_DIR/requirements.txt"
+
+# Kopiere Transkriptionsskript und Wrapper-Skript nach /opt bzw. /usr/local/bin
+echo "Kopiere Skripte..."
+
+$SUDO cp "$SCRIPT_SOURCE_DIR/$TRANSCRIBER_PY" /opt/
+$SUDO cp "$SCRIPT_SOURCE_DIR/$STT_WRAPPER_SH" /usr/local/bin/
+
+# Rechte setzen
+$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /opt/"$TRANSCRIBER_PY"
+$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /usr/local/bin/"$STT_WRAPPER_SH"
+$SUDO chmod 750 /opt/"$TRANSCRIBER_PY"
+$SUDO chmod 750 /usr/local/bin/"$STT_WRAPPER_SH"
 
 echo "Rechte für Asterisk gesetzt."
 
 echo "Installation abgeschlossen."
-echo "Bitte in FreePBX in der Voicemail-Einstellung der Nebenstelle $EXTENSION als Benachrichtigungsbefehl folgenden Befehl angeben:"
-echo "$STT_WRAPPER_DST \$1"
-echo "Das Skript wird bei neuen Voicemails aufgerufen und transkribiert diese automatisch."
 
+echo ""
+echo "Wichtig:"
+echo "Bitte in FreePBX in der Voicemail-Einstellung der Nebenstelle 140 als Benachrichtigungsbefehl folgenden Befehl angeben:"
+echo "/usr/local/bin/stt.sh \$1"
+echo "Das Skript wird bei neuen Voicemails aufgerufen und transkribiert diese automatisch."
+echo ""
+echo "Falls du die Nebenstelle anpassen möchtest, ändere die Variable EXTENSION im Skript."
