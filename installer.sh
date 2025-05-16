@@ -23,11 +23,10 @@ fi
 # Variablen anpassen:
 VENV_DIR="/usr/local/voicemail/whisper-venv"
 SCRIPT_SOURCE_DIR="$(pwd)"  # Verzeichnis, aus dem das Skript ausgeführt wird
-TRANSCRIBER_PY="voicemail_transcriber.py"
-STT_WRAPPER_SH="stt.sh"
+STT_SH="stt.sh"
 
 # Nebenstelle (Voicemail-Ordner)
-EXTENSION="82"
+EXTENSION="140"
 
 # Asterisk-Benutzer (für Rechte)
 ASTERISK_USER="asterisk"
@@ -63,14 +62,15 @@ $SUDO bash -c "source $VENV_DIR/bin/activate && pip install --upgrade pip && pip
 # Kopiere Transkriptionsskript und Wrapper-Skript nach /opt bzw. /usr/local/bin
 echo "Kopiere Skripte..."
 
-$SUDO cp "$SCRIPT_SOURCE_DIR/$TRANSCRIBER_PY" /opt/
-$SUDO cp "$SCRIPT_SOURCE_DIR/$STT_WRAPPER_SH" /usr/local/bin/
+
+$SUDO cp "$SCRIPT_SOURCE_DIR/$STT_SH" /opt/
+$SUDO cp "$SCRIPT_SOURCE_DIR/$STT_SH" /usr/local/bin/
 
 # Rechte setzen
-$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /opt/"$TRANSCRIBER_PY"
-$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /usr/local/bin/"$STT_WRAPPER_SH"
-$SUDO chmod 750 /opt/"$TRANSCRIBER_PY"
-$SUDO chmod 750 /usr/local/bin/"$STT_WRAPPER_SH"
+$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /opt/"$STT_SH"
+$SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /usr/local/bin/"$STT_SH"
+$SUDO chmod 750 /opt/"$STT_SH"
+$SUDO chmod 750 /usr/local/bin/"$STT_SH"
 
 echo "Rechte für Asterisk gesetzt."
 
