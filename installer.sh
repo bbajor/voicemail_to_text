@@ -70,7 +70,7 @@ $SUDO cp "$SCRIPT_SOURCE_DIR/$STT_WRAPPER_SH" /usr/local/bin/
 # Rechte setzen
 $SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /usr/local/bin/"$CONFIG_FILE"
 $SUDO chown "$ASTERISK_USER":"$ASTERISK_GROUP" /usr/local/bin/"$STT_WRAPPER_SH"
-$SUDO chmod 700 /usr/local/bin/"$CONFIG_FILE""
+$SUDO chmod 700 /usr/local/bin/"$CONFIG_FILE"
 $SUDO chmod 700 /usr/local/bin/"$STT_WRAPPER_SH"
 
 echo "Rechte für Asterisk gesetzt."
