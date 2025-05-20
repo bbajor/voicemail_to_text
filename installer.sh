@@ -28,6 +28,7 @@ CONFIG_FILE="config.ini"
 
 # Nebenstelle (Voicemail-Ordner)
 EXTENSION="140"
+EXTENSION="140"
 
 # Asterisk-Benutzer (für Rechte)
 ASTERISK_USER="asterisk"
